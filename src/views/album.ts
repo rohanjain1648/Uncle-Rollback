@@ -34,12 +34,13 @@ h1{font:400 clamp(2.4rem,7vw,3.6rem)/1.05 "Shrikhand",Georgia,serif;color:var(--
   color:var(--photo);background:var(--page);border-left:6px solid var(--gold)}
 .jobs a.row:hover{background:#56361f}
 .row .meta{grid-column:1/-1;color:var(--muted);font-size:.92rem}
+.row .sticker{justify-self:start;align-self:start}
 .row strong{font-weight:600}
 .empty{background:var(--page);padding:28px;border-radius:3px}
 .issue{background:var(--page);padding:20px 22px;border-radius:3px;margin-bottom:40px}
 .issue h2{margin:0 0 6px;font:600 1.4rem/1.3 "Spectral",serif}
 .issue p{margin:6px 0;color:var(--muted)}
-.strip{position:relative;display:grid;gap:44px;padding-left:0}
+.strip{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:44px;padding-left:0}
 .polaroid{position:relative;background:var(--photo);color:var(--ink);padding:14px 14px 18px;border-radius:2px;
   box-shadow:0 10px 24px rgba(20,10,4,.55);max-width:620px}
 .polaroid:nth-child(odd){transform:rotate(-1.2deg)}
