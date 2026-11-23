@@ -31,7 +31,7 @@ h1{font:400 clamp(2.4rem,7vw,3.6rem)/1.05 "Shrikhand",Georgia,serif;color:var(--
 .sticker.gold{background:var(--gold)}.sticker.avocado{background:#A9B86A}.sticker.red{background:#E9A79F}
 .jobs{list-style:none;margin:0;padding:0;display:grid;gap:14px}
 .jobs a.row{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:16px 18px;text-decoration:none;
-  color:var(--photo);background:var(--page);border-left:6px solid var(--gold);border-radius:3px}
+  color:var(--photo);background:var(--page);border-left:6px solid var(--gold)}
 .jobs a.row:hover{background:#56361f}
 .row .meta{grid-column:1/-1;color:var(--muted);font-size:.92rem}
 .row strong{font-weight:600}
