@@ -16,11 +16,11 @@ export interface Deps {
   github: GitHub;
   memory: Memory;
   narrator: Narrator;
-  readAcceptance(repo: string): Promise<{ path: string; content: string }[]>;
+  readAcceptance(repo: string, issue: number): Promise<{ path: string; content: string }[]>;
   now(): number;
 }
 
-export const CLAUDE_RUNNER = "/root/.uncle/run-claude.sh";
+export const CLAUDE_RUNNER = "/work/.uncle/run-claude.sh";
 const tail = (s: string, n = 40) => s.split("\n").slice(-n).join("\n");
 const sh = (script: string) => ["bash", "-c", script];
 
@@ -60,7 +60,7 @@ export async function runJob(jobId: string, d: Deps): Promise<JobStatus> {
 
     const lore = await d.memory.recallForRepo(repo, `${job.issueTitle} ${job.issueBody}`, d.cfg.recallTopK);
     await say(d, repo, issueNumber, ackComment(job, lore));
-    const acceptance = await d.readAcceptance(repo);
+    const acceptance = await d.readAcceptance(repo, issueNumber);
     const acceptancePaths = new Set(acceptance.map((a) => a.path));
 
     for (let n = 1; n <= d.cfg.maxTimelines; n++) {

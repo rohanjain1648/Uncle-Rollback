@@ -34,7 +34,7 @@ export class FakeGarage implements Garage {
   async exec(cmd: string[], _opts?: ExecOpts): Promise<ExecResult> {
     const s = cmd.join(" ");
     this.events.push(`exec:${s.slice(0, 60)}`);
-    if (cmd[0] === "/root/.uncle/run-claude.sh") {
+    if (cmd[0] === "/work/.uncle/run-claude.sh") {
       this.attempt++;
       const a = this.cur();
       return res(a.claudeExit ?? 0, "", "", a.timedOut ?? false);

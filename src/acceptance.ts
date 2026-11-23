@@ -1,9 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
-/** Hidden acceptance tests for `owner/repo`, stored on the brain at `<root>/owner__repo/`. */
-export async function readAcceptanceFrom(root: string, repo: string): Promise<{ path: string; content: string }[]> {
-  const dir = join(root, repo.replace("/", "__"));
+/** Hidden acceptance tests for one issue, stored on the brain at `<root>/owner__repo/issue-<n>/`. */
+export async function readAcceptanceFrom(root: string, repo: string, issue: number): Promise<{ path: string; content: string }[]> {
+  const dir = join(root, repo.replace("/", "__"), `issue-${issue}`);
   let entries;
   try {
     entries = await readdir(dir, { recursive: true, withFileTypes: true });

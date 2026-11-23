@@ -21,7 +21,7 @@ const deps: Deps = {
   github: new GatewayGitHub(cfg),
   memory: new PineconeMemory(cfg),
   narrator: new IdentityNarrator(),
-  readAcceptance: (repo) => readAcceptanceFrom(cfg.acceptanceDir, repo),
+  readAcceptance: (repo, issue) => readAcceptanceFrom(cfg.acceptanceDir, repo, issue),
   now: () => Date.now(),
 };
 

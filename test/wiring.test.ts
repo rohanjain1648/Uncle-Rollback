@@ -6,19 +6,22 @@ import { readAcceptanceFrom } from "../src/acceptance.js";
 import { withKeepAwake, type TasksClient } from "../src/keepawake.js";
 
 describe("readAcceptanceFrom", () => {
-  it("reads every file under acceptance/<owner>__<repo>/ with relative posix paths", async () => {
+  it("reads every file under acceptance/<owner>__<repo>/issue-<n>/ with relative posix paths", async () => {
     const root = mkdtempSync(join(tmpdir(), "acc-"));
-    mkdirSync(join(root, "alice__pantry", "test", "deep"), { recursive: true });
-    writeFileSync(join(root, "alice__pantry", "test", "hidden.test.ts"), "A");
-    writeFileSync(join(root, "alice__pantry", "test", "deep", "more.test.ts"), "B");
-    const files = await readAcceptanceFrom(root, "alice/pantry");
+    const dir = join(root, "alice__pantry", "issue-7");
+    mkdirSync(join(dir, "test", "deep"), { recursive: true });
+    writeFileSync(join(dir, "test", "hidden.test.ts"), "A");
+    writeFileSync(join(dir, "test", "deep", "more.test.ts"), "B");
+    mkdirSync(join(root, "alice__pantry", "issue-8", "test"), { recursive: true });
+    writeFileSync(join(root, "alice__pantry", "issue-8", "test", "other.test.ts"), "C");
+    const files = await readAcceptanceFrom(root, "alice/pantry", 7);
     expect(files.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
       { path: "test/deep/more.test.ts", content: "B" },
       { path: "test/hidden.test.ts", content: "A" },
     ]);
   });
-  it("returns [] when the repo has no acceptance folder", async () => {
-    expect(await readAcceptanceFrom(mkdtempSync(join(tmpdir(), "acc-")), "alice/none")).toEqual([]);
+  it("returns [] when the issue has no acceptance folder", async () => {
+    expect(await readAcceptanceFrom(mkdtempSync(join(tmpdir(), "acc-")), "alice/none", 1)).toEqual([]);
   });
 });
 

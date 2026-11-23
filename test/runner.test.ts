@@ -108,7 +108,7 @@ describe("runJob", () => {
     await runJob(job.id, d);
     const ev = d.garage.events;
     const iPrompt = ev.indexOf("write:/work/prompt.txt");
-    const iClaude = ev.findIndex((e) => e.startsWith("exec:/root/.uncle/run-claude.sh"));
+    const iClaude = ev.findIndex((e) => e.startsWith("exec:/work/.uncle/run-claude.sh"));
     const iHidden = ev.indexOf("write:/work/repo/test/hidden.test.ts");
     expect(iPrompt).toBeGreaterThan(-1);
     expect(iPrompt).toBeLessThan(iClaude);
