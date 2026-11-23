@@ -11,6 +11,8 @@ export interface Config {
   dbPath: string;
   acceptanceDir: string;
   publicUrl: string;
+  /** Gateway path prefix in front of Pinecone's `records/...` paths; pinned by the spike. */
+  pineconePathPrefix: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -51,5 +53,6 @@ export function loadConfig(env: Env): Config {
     dbPath: env.DB_PATH?.trim() || "/data/uncle.db",
     acceptanceDir: env.ACCEPTANCE_DIR?.trim() || "acceptance",
     publicUrl: required(env, "PUBLIC_URL").replace(/\/+$/, ""),
+    pineconePathPrefix: (env.PINECONE_PATH_PREFIX ?? "").trim().replace(/^\/+|\/+$/g, ""),
   };
 }
