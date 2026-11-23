@@ -5,6 +5,7 @@ import { SpritesGarage, spritesTransport } from "./garage.js";
 import { GatewayGitHub } from "./github.js";
 import { PineconeMemory } from "./memory.js";
 import { IdentityNarrator } from "./narrate.js";
+import { OllamaNarrator } from "./ollama.js";
 import { JobQueue } from "./queue.js";
 import { runJob, type Deps } from "./runner.js";
 import { createApp, boot } from "./server.js";
@@ -20,7 +21,10 @@ const deps: Deps = {
   garage: new SpritesGarage(cfg, spritesTransport(cfg)),
   github: new GatewayGitHub(cfg),
   memory: new PineconeMemory(cfg),
-  narrator: new IdentityNarrator(),
+  // Optional 4th connector: Ollama Cloud polishes Uncle's comments; falls back to the template text on any problem.
+  narrator: cfg.conn.ollama
+    ? new OllamaNarrator(cfg.conn.ollama, process.env.OLLAMA_MODEL ?? "gpt-oss:20b", process.env.OLLAMA_GATEWAY_PROVIDER ?? "ollama")
+    : new IdentityNarrator(),
   readAcceptance: (repo, issue) => readAcceptanceFrom(cfg.acceptanceDir, repo, issue),
   now: () => Date.now(),
 };
