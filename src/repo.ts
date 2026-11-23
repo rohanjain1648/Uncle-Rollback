@@ -3,6 +3,9 @@ import type { Garage } from "./garage.js";
 import { gatewayUrl } from "./gateway.js";
 
 export const REPO_DIR = "/work/repo";
+/** Dependency and cache folders: never part of a fix, never shown in diffs, never sent in a PR. */
+export const IGNORED_DIRS = ["node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".tox"];
+export const BASE_TAG = "uncle-base";
 
 export interface RepoProbe {
   uncleYml: string | null;
@@ -24,11 +27,29 @@ export async function fetchRepo(g: Garage, cfg: Config, repo: string): Promise<v
     `cd ${REPO_DIR}`,
     `curl -fsSL ${q(url)} | tar xz --strip-components=1`,
     "git init -q",
+    `printf '%s\\n' ${IGNORED_DIRS.map((d) => q(d + "/")).join(" ")} >> .git/info/exclude`,
     "git add -A",
     "git -c user.name=uncle -c user.email=uncle@localhost commit -qm base",
   ].join("\n");
   const r = await g.exec(sh(script));
   if (r.exitCode !== 0) throw new Error(`fetchRepo failed (${r.exitCode}): ${r.stderr || r.stdout}`);
+}
+
+/**
+ * Install dependencies before the baseline, so the baseline and every timeline can actually run the tests.
+ * Lockfile changes from the install become part of the base, which is then tagged for change detection.
+ */
+export async function installDeps(g: Garage, p: RepoProbe, timeoutMs = 600_000): Promise<void> {
+  const steps = ["set -euo pipefail", `cd ${REPO_DIR}`];
+  if (p.packageJson !== null) steps.push("(npm ci --no-audit --no-fund --loglevel=error || npm install --no-audit --no-fund --loglevel=error)");
+  steps.push(
+    "if [ -f requirements.txt ]; then python3 -m pip install -q -r requirements.txt || python3 -m pip install -q --break-system-packages -r requirements.txt; fi",
+    "git add -A",
+    "git -c user.name=uncle -c user.email=uncle@localhost commit -qm deps --allow-empty",
+    `git tag -f ${BASE_TAG} >/dev/null`,
+  );
+  const r = await g.exec(sh(steps.join("\n")), { timeoutMs });
+  if (r.exitCode !== 0) throw new Error(`installing dependencies failed (${r.exitCode}): ${(r.stderr || r.stdout).slice(-500)}`);
 }
 
 async function readOrNull(g: Garage, path: string): Promise<string | null> {
@@ -70,9 +91,11 @@ export function detectTestCommand(p: RepoProbe): string | null {
 const unquote = (s: string) => (s.startsWith('"') && s.endsWith('"') ? JSON.parse(s) : s);
 
 export async function changedFiles(g: Garage): Promise<{ path: string; deleted: boolean }[]> {
-  const r = await g.exec(sh(`cd ${REPO_DIR} && git status --porcelain -uall`));
+  // Move HEAD back to the base (keeping the work) so a `git commit` by Claude can't hide its changes.
+  const r = await g.exec(sh(`cd ${REPO_DIR} && git reset -q --soft ${BASE_TAG} && git status --porcelain -uall`));
   if (r.exitCode !== 0) throw new Error(`git status failed: ${r.stderr}`);
   const out: { path: string; deleted: boolean }[] = [];
+  const ignored = (p: string) => p.split("/").some((seg) => IGNORED_DIRS.includes(seg));
   for (const line of r.stdout.split("\n")) {
     if (line.length < 4) continue;
     const xy = line.slice(0, 2);
@@ -84,7 +107,7 @@ export async function changedFiles(g: Garage): Promise<{ path: string; deleted: 
       out.push({ path: unquote(rest), deleted: xy.includes("D") });
     }
   }
-  return out;
+  return out.filter((f) => !ignored(f.path));
 }
 
 export const TEST_FILE_PATTERNS: RegExp[] = [

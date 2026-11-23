@@ -29,6 +29,8 @@ export function parseTrigger(event: string, payload: any, cfg: Config): Trigger 
   if (issue.pull_request) return null;
   if (author === cfg.botLogin) return null;
   if (!cfg.ownerAllowlist.includes(author)) return null;
+  // The issue text becomes Claude's instructions, so whoever wrote it must be trusted too.
+  if (!cfg.ownerAllowlist.includes(String(issue.user?.login ?? "").toLowerCase())) return null;
   if (!cfg.repoAllowlist.includes(repo)) return null;
   if (!/@uncle\b/i.test(String(comment.body ?? ""))) return null;
   return {

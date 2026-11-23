@@ -18,7 +18,7 @@ function fakeQueue() {
 const comment = JSON.stringify({
   action: "created",
   comment: { id: 42, body: "@uncle fix this", user: { login: "alice" } },
-  issue: { number: 7, title: "Fractions", body: "" },
+  issue: { number: 7, title: "Fractions", body: "", user: { login: "alice" } },
   repository: { full_name: "alice/pantry" },
 });
 

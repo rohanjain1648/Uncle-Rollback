@@ -64,8 +64,17 @@ describe("SpritesGarage", () => {
     const { t } = transport((_p, init) => new Promise((_res, rej) => {
       init.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")));
     }));
-    const r = await new SpritesGarage(cfg, t).exec(["sleep", "99"], { timeoutMs: 20 });
+    const r = await new SpritesGarage(cfg, t, { graceMs: 0 }).exec(["sleep", "99"], { timeoutMs: 20 });
     expect(r.timedOut).toBe(true);
+  });
+
+  it("gives the server-side timeout a grace period before aborting client-side", async () => {
+    const { t } = transport((_p, init) => new Promise((res, rej) => {
+      const timer = setTimeout(() => res(new Response(envelope(0, "slow but fine"))), 30);
+      init.signal?.addEventListener("abort", () => { clearTimeout(timer); rej(new DOMException("aborted", "AbortError")); });
+    }));
+    const r = await new SpritesGarage(cfg, t, { graceMs: 200 }).exec(["make", "test"], { timeoutMs: 10 });
+    expect(r).toMatchObject({ exitCode: 0, stdout: "slow but fine", timedOut: false });
   });
 
   it("writes files with mkdir", async () => {
@@ -107,15 +116,21 @@ describe("SpritesGarage", () => {
     expect(await g.findCheckpoint("nope")).toBeNull();
   });
 
-  it("restores and waits until exec works again", async () => {
+  it("restores and waits until the pre-restore marker is gone", async () => {
     let probes = 0;
     const { t, calls } = transport((path) => {
+      if (path.includes("/fs/write")) return Response.json({ path: "m", size: 1, mode: "0644" });
       if (path.includes("/restore")) return new Response(JSON.stringify({ type: "complete", data: "Restored to v3" }) + "\n");
       probes++;
-      return probes === 1 ? new Response("starting", { status: 503 }) : new Response(envelope(0, ""));
+      if (probes === 1) return new Response("starting", { status: 503 });
+      if (probes === 2) return new Response(envelope(1, "")); // marker still present: old disk
+      return new Response(envelope(0, ""));
     });
     await new SpritesGarage(cfg, t, { pollMs: 1 }).restore("v3");
-    expect(calls[0].path).toBe("/v1/sprites/uncle-garage/checkpoints/v3/restore");
-    expect(probes).toBe(2);
+    expect(new URL("https://x" + calls[0].path).searchParams.get("path")).toBe("/work/.uncle-restore-marker");
+    expect(calls[1].path).toBe("/v1/sprites/uncle-garage/checkpoints/v3/restore");
+    const probe = new URL("https://x" + calls[2].path).searchParams.getAll("cmd")[2];
+    expect(probe).toContain("/work/.uncle-restore-marker");
+    expect(probes).toBe(3);
   });
 });

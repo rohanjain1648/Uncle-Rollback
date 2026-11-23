@@ -108,7 +108,7 @@ describe("runJob", () => {
     await runJob(job.id, d);
     const ev = d.garage.events;
     const iPrompt = ev.indexOf("write:/work/prompt.txt");
-    const iClaude = ev.findIndex((e) => e.startsWith("exec:/work/.uncle/run-claude.sh"));
+    const iClaude = ev.lastIndexOf("exec:cat /work/claude-exit");
     const iHidden = ev.indexOf("write:/work/repo/test/hidden.test.ts");
     expect(iPrompt).toBeGreaterThan(-1);
     expect(iPrompt).toBeLessThan(iClaude);
@@ -121,6 +121,56 @@ describe("runJob", () => {
     await runJob(job.id, d);
     expect(d.github.comments[0].body).toMatch(/last time/i);
     expect(d.garage.writes.find((w) => w.path === "/work/prompt.txt")!.content).toContain("I deleted the parser entirely");
+  });
+
+  it("installs dependencies and tags the base before the baseline run", async () => {
+    const { d, job } = setup(new FakeGarage([{ suitePass: true }]));
+    await runJob(job.id, d);
+    const ev = d.garage.events;
+    const iInstall = ev.findIndex((e) => e.includes("npm ci"));
+    const iTag = ev.findIndex((e) => e.includes("git tag -f uncle-base"));
+    const iBaseline = ev.findIndex((e) => e.includes("npm test"));
+    expect(iInstall).toBeGreaterThan(-1);
+    expect(iInstall).toBeLessThanOrEqual(iTag);
+    expect(iTag).toBeLessThan(iBaseline);
+  });
+
+  it("runs Claude detached and polls for its exit code", async () => {
+    const { d, job } = setup(new FakeGarage([{ suitePass: true }]));
+    await runJob(job.id, d);
+    expect(d.garage.events.some((e) => e.includes("setsid") && e.includes("run-claude.sh"))).toBe(true);
+    expect(d.garage.events).toContain("exec:cat /work/claude-exit");
+  });
+
+  it("kills and fails a Claude run that never reports an exit code", async () => {
+    const { d, job } = setup(new FakeGarage([{ hang: true }, { suitePass: true }]));
+    expect(await runJob(job.id, d)).toBe("passed");
+    expect(d.db.timelines(job.id)[0].failReason).toMatch(/ran out of time/);
+    expect(d.garage.events.some((e) => e.includes("pkill"))).toBe(true);
+  });
+
+  it("fails a timeline that changes nothing without running hidden tests", async () => {
+    const { d, job } = setup(new FakeGarage([{ changed: [], suitePass: true }, { suitePass: true }]));
+    await runJob(job.id, d);
+    expect(d.db.timelines(job.id)[0].failReason).toMatch(/changed nothing/);
+    expect(d.garage.writes.filter((w) => w.path.endsWith("hidden.test.ts"))).toHaveLength(1);
+  });
+
+  it("ends in error without opening a PR when a changed file cannot be read", async () => {
+    const g = new FakeGarage([{ suitePass: true }]);
+    g.unreadable.add("src/parse.ts");
+    const { d, job } = setup(g);
+    expect(await runJob(job.id, d)).toBe("error");
+    expect(d.github.pulls).toHaveLength(0);
+  });
+
+  it("keeps passed and the PR link when GitHub comments fail", async () => {
+    const { d, job } = setup(new FakeGarage([{ suitePass: true }]));
+    d.github.failComments = true;
+    expect(await runJob(job.id, d)).toBe("passed");
+    const j = d.db.getJob(job.id)!;
+    expect(j.status).toBe("passed");
+    expect(j.prUrl).toBe("https://github.com/alice/pantry/pull/9");
   });
 
   it("marks the job as error and resolves when the garage throws", async () => {

@@ -27,6 +27,7 @@ const deps: Deps = {
     : new IdentityNarrator(),
   readAcceptance: (repo, issue) => readAcceptanceFrom(cfg.acceptanceDir, repo, issue),
   now: () => Date.now(),
+  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 
 // Spike Step 8 decides whether an open exec keeps the brain awake; if not, set KEEP_AWAKE=tasks.

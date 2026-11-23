@@ -29,6 +29,7 @@ export function spritesTransport(cfg: Config, env: Record<string, string | undef
 }
 
 const SENTINEL = "__UNCLE_EXIT__";
+export const RESTORE_MARKER = "/work/.uncle-restore-marker";
 const DEFAULT_TIMEOUT_S = 1800;
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -90,8 +91,17 @@ interface CheckpointInfo { id: string; create_time: string; comment?: string }
 export class SpritesGarage implements Garage {
   private base: string;
 
-  constructor(cfg: Config, private t: Transport, private opts: { pollMs?: number; restoreTimeoutMs?: number } = {}) {
+  constructor(
+    cfg: Config,
+    private t: Transport,
+    private opts: { pollMs?: number; restoreTimeoutMs?: number; graceMs?: number } = {},
+  ) {
     this.base = `/v1/sprites/${encodeURIComponent(cfg.garageName)}`;
+  }
+
+  /** Non-exec API calls get a timeout too, so a hung request can't block the queue. */
+  private call(path: string, init: RequestInit = {}, timeoutMs = 120_000): Promise<Response> {
+    return this.t(path, { ...init, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
   }
 
   async exec(cmd: string[], opts: ExecOpts = {}): Promise<ExecResult> {
@@ -102,7 +112,9 @@ export class SpritesGarage implements Garage {
     if (opts.cwd) q.set("dir", opts.cwd);
 
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_S * 1000 + 15_000);
+    // The server-side `timeout` fires first; the client waits a grace period longer so it gets the real result.
+    const grace = this.opts.graceMs ?? 15_000;
+    const timer = setTimeout(() => ctrl.abort(), (opts.timeoutMs ?? DEFAULT_TIMEOUT_S * 1000) + grace);
     try {
       const res = await this.t(`${this.base}/exec?${q}`, { method: "POST", signal: ctrl.signal });
       const body = await res.text();
@@ -118,14 +130,14 @@ export class SpritesGarage implements Garage {
 
   async writeFile(path: string, content: string): Promise<void> {
     const q = new URLSearchParams({ path, workingDir: "/", mkdir: "true" });
-    const res = await this.t(`${this.base}/fs/write?${q}`, {
+    const res = await this.call(`${this.base}/fs/write?${q}`, {
       method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: content,
     });
     if (!res.ok) throw new Error(`writeFile ${path} failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
   }
 
   private async list(): Promise<CheckpointInfo[]> {
-    const res = await this.t(`${this.base}/checkpoints`);
+    const res = await this.call(`${this.base}/checkpoints`);
     if (!res.ok) throw new Error(`list checkpoints failed (${res.status})`);
     return (await res.json()) as CheckpointInfo[];
   }
@@ -137,22 +149,27 @@ export class SpritesGarage implements Garage {
   }
 
   async checkpoint(comment: string): Promise<string> {
-    const res = await this.t(`${this.base}/checkpoint`, {
+    const res = await this.call(`${this.base}/checkpoint`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment }),
-    });
+    }, 300_000);
     await readStream(res, "checkpoint");
     const id = await this.findCheckpoint(comment);
     if (!id) throw new Error(`checkpoint "${comment}" not found after creation`);
     return id;
   }
 
+  /**
+   * Restore may be asynchronous (the Sprite restarts after the call returns), so "exec works" is not
+   * proof the disk was rewound. Write a marker that no checkpoint contains, and wait until it is gone.
+   */
   async restore(versionId: string): Promise<void> {
-    const res = await this.t(`${this.base}/checkpoints/${encodeURIComponent(versionId)}/restore`, { method: "POST" });
+    await this.writeFile(RESTORE_MARKER, versionId);
+    const res = await this.call(`${this.base}/checkpoints/${encodeURIComponent(versionId)}/restore`, { method: "POST" }, 300_000);
     await readStream(res, "restore");
-    const deadline = Date.now() + (this.opts.restoreTimeoutMs ?? 60_000);
+    const deadline = Date.now() + (this.opts.restoreTimeoutMs ?? 120_000);
     const pollMs = this.opts.pollMs ?? 1000;
     for (;;) {
-      if ((await this.exec(["true"], { timeoutMs: 10_000 })).exitCode === 0) return;
+      if ((await this.exec(["test", "!", "-e", RESTORE_MARKER], { timeoutMs: 10_000 })).exitCode === 0) return;
       if (Date.now() > deadline) throw new Error(`garage did not come back after restoring ${versionId}`);
       await new Promise((r) => setTimeout(r, pollMs));
     }

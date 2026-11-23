@@ -1,4 +1,5 @@
 export const GATEWAY_BASE = "https://api.sprites.dev/v1/gateway";
+export const DEFAULT_TIMEOUT_MS = 60_000;
 
 export class GatewayError extends Error {
   constructor(public status: number, public body: string, url: string) {
@@ -21,7 +22,8 @@ export async function gatewayFetch(
   fetchImpl: FetchImpl = fetch,
 ): Promise<Response> {
   const url = gatewayUrl(provider, connectionId, path);
-  const res = await fetchImpl(url, init);
+  // Never let one hung call block the one-at-a-time job queue.
+  const res = await fetchImpl(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
   if (!res.ok) throw new GatewayError(res.status, await res.text(), url);
   return res;
 }

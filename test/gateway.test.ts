@@ -19,6 +19,13 @@ describe("gatewayFetch", () => {
     expect(await res.json()).toEqual({ url: "https://api.sprites.dev/v1/gateway/github/c1/x" });
   });
 
+  it("adds a default timeout signal when the caller gives none", async () => {
+    let seen: any;
+    const fake = async (_u: any, init: any) => { seen = init?.signal; return new Response("ok"); };
+    await gatewayFetch("github", "c1", "x", { method: "GET" }, fake as any);
+    expect(seen).toBeInstanceOf(AbortSignal);
+  });
+
   it("throws GatewayError with status and body on non-2xx", async () => {
     const fake = async () => new Response("denied", { status: 403 });
     const err = await gatewayFetch("github", "c1", "x", undefined, fake as any).catch((e) => e);

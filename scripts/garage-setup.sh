@@ -16,12 +16,17 @@ $SUDO chown -R "$(id -u):$(id -g)" /work
 
 cat > /work/.uncle/run-claude.sh <<'EOS'
 #!/usr/bin/env bash
-# Usage: run-claude.sh <timeout-seconds>. Reads /work/prompt.txt, writes /work/claude-out.json.
-rm -f /work/claude-out.json
+# Usage: run-claude.sh <timeout-seconds>. Reads /work/prompt.txt, writes /work/claude-out.json,
+# then writes its exit code to /work/claude-exit (the brain polls for that file; 124 = timed out).
+rm -f /work/claude-out.json /work/claude-exit
 export CLAUDE_CODE_OAUTH_TOKEN="$(cat /work/.uncle/claude_token 2>/dev/null)"
-cd /work/repo || exit 2
+export IS_SANDBOX=1   # the garage is a disposable microVM; lets skip-permissions run even as root
+cd /work/repo || { echo 2 > /work/claude-exit; exit 2; }
 timeout --kill-after=10 "$1" claude -p "$(cat /work/prompt.txt)" \
   --output-format json --dangerously-skip-permissions > /work/claude-out.json
+code=$?
+echo "$code" > /work/claude-exit.tmp && mv /work/claude-exit.tmp /work/claude-exit
+exit "$code"
 EOS
 chmod +x /work/.uncle/run-claude.sh
 

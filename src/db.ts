@@ -95,8 +95,12 @@ export class Db {
   }
 
   markRunningAsInterrupted(): number {
-    return this.db.prepare(`UPDATE jobs SET status = 'interrupted', updated_at = ? WHERE status = 'running'`)
-      .run(new Date().toISOString()).changes;
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `UPDATE timelines SET outcome = 'failed', fail_reason = 'interrupted: the brain restarted'
+       WHERE outcome = 'running' AND job_id IN (SELECT id FROM jobs WHERE status = 'running')`,
+    ).run();
+    return this.db.prepare(`UPDATE jobs SET status = 'interrupted', updated_at = ? WHERE status = 'running'`).run(now).changes;
   }
 
   addTimeline(t: Timeline): void {
@@ -112,6 +116,8 @@ export class Db {
     const sets = entries.map(([k]) => `${TL_COLS[k as keyof Timeline]} = ?`).join(", ");
     this.db.prepare(`UPDATE timelines SET ${sets} WHERE job_id = ? AND n = ?`)
       .run(...entries.map(([, v]) => v as any), jobId, n);
+    // The album polls the job's updated_at, so a timeline change must touch it.
+    this.db.prepare(`UPDATE jobs SET updated_at = ? WHERE id = ?`).run(new Date().toISOString(), jobId);
   }
 
   timelines(jobId: string): Timeline[] {

@@ -44,6 +44,23 @@ describe("Db", () => {
     expect(db.getJob(b.id)?.status).toBe("queued");
   });
 
+  it("bumps the job's updatedAt when a timeline changes (album polling)", async () => {
+    const j = db.createJob(trig())!;
+    db.addTimeline({ jobId: j.id, n: 1, outcome: "running", approach: "", quote: "", failReason: null, testTail: "", diff: "", durationMs: 0 });
+    const before = db.getJob(j.id)!.updatedAt;
+    await new Promise((r) => setTimeout(r, 5));
+    db.updateTimeline(j.id, 1, { outcome: "failed" });
+    expect(db.getJob(j.id)!.updatedAt > before).toBe(true);
+  });
+
+  it("fails running timelines of interrupted jobs", () => {
+    const j = db.createJob(trig())!;
+    db.updateJob(j.id, { status: "running" });
+    db.addTimeline({ jobId: j.id, n: 1, outcome: "running", approach: "", quote: "", failReason: null, testTail: "", diff: "", durationMs: 0 });
+    db.markRunningAsInterrupted();
+    expect(db.timelines(j.id)[0]).toMatchObject({ outcome: "failed", failReason: "interrupted: the brain restarted" });
+  });
+
   it("stores and orders timelines and lists jobs newest first", () => {
     const j = db.createJob(trig())!;
     const tl = { jobId: j.id, outcome: "running" as const, approach: "", quote: "", failReason: null, testTail: "", diff: "", durationMs: 0 };

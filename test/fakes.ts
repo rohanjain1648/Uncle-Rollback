@@ -9,6 +9,8 @@ import { testConfig } from "./helpers.js";
 export interface AttemptScript {
   claudeExit?: number;
   timedOut?: boolean;
+  /** Claude never writes an exit code (hangs past the deadline). */
+  hang?: boolean;
   claudeOut?: string;
   changed?: { path: string; deleted: boolean }[];
   suitePass?: boolean;
@@ -26,6 +28,8 @@ export class FakeGarage implements Garage {
   attempt = 0;
   packageJson: string | null = '{"scripts":{"test":"vitest run"}}';
   failFetch = false;
+  /** Paths whose `cat` fails (e.g. a gateway hiccup). */
+  unreadable = new Set<string>();
 
   constructor(public attempts: AttemptScript[] = []) {}
 
@@ -33,17 +37,22 @@ export class FakeGarage implements Garage {
 
   async exec(cmd: string[], _opts?: ExecOpts): Promise<ExecResult> {
     const s = cmd.join(" ");
-    this.events.push(`exec:${s.slice(0, 60)}`);
-    if (cmd[0] === "/work/.uncle/run-claude.sh") {
-      this.attempt++;
+    this.events.push(`exec:${s.slice(0, 1000)}`);
+    if (s.includes("setsid") && s.includes("run-claude.sh")) { this.attempt++; return res(); }
+    if (s === "cat /work/claude-exit") {
       const a = this.cur();
-      return res(a.claudeExit ?? 0, "", "", a.timedOut ?? false);
+      if (a.hang) return res(1, "", "No such file");
+      return res(0, `${a.claudeExit ?? (a.timedOut ? 124 : 0)}\n`);
     }
+    if (s.includes("pkill")) return res();
     if (s === "cat /work/claude-out.json") return res(0, this.cur().claudeOut ?? claudeJson(`approach ${this.attempt}`));
     if (s.includes("tarball")) return this.failFetch ? res(22, "", "curl: (22) 404") : res();
     if (s === "cat /work/repo/package.json") return this.packageJson ? res(0, this.packageJson) : res(1);
     if (s.startsWith("cat /work/repo/.uncle.yml") || s.startsWith("test ")) return res(1);
-    if (s.startsWith("cat /work/repo/")) return res(0, `content of ${s.slice("cat /work/repo/".length)}`);
+    if (s.startsWith("cat /work/repo/")) {
+      const p = s.slice("cat /work/repo/".length);
+      return this.unreadable.has(p) ? res(255, "", "exec HTTP 502") : res(0, `content of ${p}`);
+    }
     if (s.includes("git status --porcelain")) {
       const changed = this.attempt === 0 ? [] : this.cur().changed ?? [{ path: "src/parse.ts", deleted: false }];
       return res(0, changed.map((c) => `${c.deleted ? " D" : " M"} ${c.path}`).join("\n") + "\n");
@@ -69,7 +78,12 @@ export class FakeGitHub implements GitHub {
   comments: { repo: string; issue: number; body: string }[] = [];
   reactions: Reaction[] = [];
   pulls: { branch: string; files: FileChange[]; title: string; body: string }[] = [];
-  async comment(repo: string, issue: number, body: string) { this.comments.push({ repo, issue, body }); }
+  /** Make every comment call fail (e.g. GitHub 502). */
+  failComments = false;
+  async comment(repo: string, issue: number, body: string) {
+    if (this.failComments) throw new Error("GitHub 502");
+    this.comments.push({ repo, issue, body });
+  }
   async react(_repo: string, _id: number, content: Reaction) { this.reactions.push(content); }
   async defaultBranch() { return { name: "main", sha: "base1" }; }
   async createPullFromFiles(_repo: string, _base: any, branch: string, files: FileChange[], title: string, body: string) {
@@ -89,6 +103,7 @@ export class FakeMemory implements Memory {
 export const ACCEPTANCE = [{ path: "test/hidden.test.ts", content: "hidden!" }];
 
 export function makeDeps(over: Partial<Deps> = {}): Deps & { garage: FakeGarage; github: FakeGitHub; memory: FakeMemory } {
+  let clock = 1_700_000_000_000;
   return {
     cfg: testConfig(),
     db: new Db(":memory:"),
@@ -97,7 +112,8 @@ export function makeDeps(over: Partial<Deps> = {}): Deps & { garage: FakeGarage;
     memory: new FakeMemory(),
     narrator: new IdentityNarrator(),
     readAcceptance: async () => ACCEPTANCE,
-    now: () => Date.now(),
+    now: () => clock,
+    sleep: async (ms: number) => { clock += ms; },
     ...over,
   } as any;
 }
