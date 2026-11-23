@@ -45,6 +45,16 @@ describe("JobQueue", () => {
     expect(log).toEqual([`start ${a}`, `end ${a}`, `start ${b}`, `end ${b}`]);
   });
 
+  it("runs jobs enqueued after an earlier drain found the queue empty", async () => {
+    const d = makeDeps();
+    const ran: string[] = [];
+    const q = new JobQueue(d, async (id) => { ran.push(id); d.db.updateJob(id, { status: "passed" }); return "passed"; });
+    await q.drain(); // boot-time drain on an empty queue
+    await q.enqueue(trig({ commentId: 5 }));
+    await q.drain();
+    expect(ran).toHaveLength(1);
+  });
+
   it("keeps draining after a runner rejects", async () => {
     const d = makeDeps();
     let calls = 0;

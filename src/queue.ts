@@ -23,7 +23,10 @@ export class JobQueue {
   /** Run queued jobs one at a time. Concurrent callers share the same drain. */
   drain(): Promise<void> {
     if (!this.draining) {
+      // Yield once before the loop so `this.draining` is assigned before the finally-block resets it,
+      // even when the queue is empty and the loop finishes synchronously.
       this.draining = (async () => {
+        await Promise.resolve();
         try {
           for (let job = this.d.db.nextQueued(); job; job = this.d.db.nextQueued()) {
             try {

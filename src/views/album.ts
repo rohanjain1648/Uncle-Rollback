@@ -53,13 +53,16 @@ h1{font:400 clamp(2.4rem,7vw,3.6rem)/1.05 "Shrikhand",Georgia,serif;color:var(--
 .caption{margin:12px 4px 0;font:1.25rem/1.35 "Kalam",cursive}
 .facts{margin:8px 4px 0;font-size:.95rem;color:#5b4636}
 .facts b{color:var(--ink)}
-.rewound .shot{filter:grayscale(1) sepia(.35) brightness(.8)}
-.rewound .scrawl{position:absolute;inset:14px 14px auto 14px;height:170px;display:grid;place-items:center;pointer-events:none}
-.rewound .scrawl span{font:700 clamp(1.6rem,6vw,2.4rem)/1 "Kalam",cursive;color:var(--red);transform:rotate(-12deg);
-  text-shadow:0 0 6px rgba(255,253,248,.7)}
-.rewound .scrawl::before{content:"";position:absolute;inset:18px 30px;border-top:4px solid var(--red);
-  transform:rotate(-14deg);top:50%;opacity:.85}
-.star{position:absolute;top:-18px;right:18px;width:54px;height:54px;background:var(--gold);
+.rewound{background:#EFE6D6}
+.rewound .shot{filter:sepia(.8) brightness(.55) contrast(.8)}
+.rewound .caption,.rewound .facts{opacity:.8}
+.rewound .scrawl{position:absolute;inset:14px 14px auto 14px;height:170px;display:grid;place-items:center;pointer-events:none;overflow:hidden}
+.rewound .scrawl span{position:relative;z-index:1;font:700 clamp(1.7rem,6vw,2.6rem)/1 "Kalam",cursive;color:#FF5A47;
+  transform:rotate(-8deg);text-shadow:0 2px 0 #1f1611,0 0 10px #1f1611}
+.rewound .scrawl::before,.rewound .scrawl::after{content:"";position:absolute;left:8%;right:8%;top:50%;
+  border-top:5px solid var(--red);border-radius:4px;opacity:.9}
+.rewound .scrawl::before{transform:rotate(14deg)}.rewound .scrawl::after{transform:rotate(-14deg)}
+.star{position:absolute;z-index:2;top:-24px;right:18px;width:58px;height:58px;background:var(--gold);
   clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
   filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
 .developing .shot{animation:develop 2.4s ease-in-out infinite alternate}

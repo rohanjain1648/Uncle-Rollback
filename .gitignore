@@ -4,3 +4,7 @@ node_modules/
 *.db
 .superpowers/
 dist/
+.playwright-mcp/
+.env.*
+!.env.example
+smoke.log
