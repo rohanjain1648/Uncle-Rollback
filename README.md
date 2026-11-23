@@ -103,7 +103,7 @@ GitHub issue comment "@uncle fix this"
 
 1. **Trigger.** GitHub sends an `issue_comment` webhook. The brain verifies the `X-Hub-Signature-256` HMAC and then checks that:
    - the comment is newly created (not edited) and mentions `@uncle`;
-   - the author is in `OWNER_ALLOWLIST` and is not the bot itself;
+   - both the comment's author and the issue's author are in `OWNER_ALLOWLIST`, and neither is the bot itself (the issue text becomes Claude's instructions, so whoever wrote it must be trusted);
    - the repo is in `REPO_ALLOWLIST`;
    - the issue is not a pull request.
 
@@ -112,18 +112,21 @@ GitHub issue comment "@uncle fix this"
 3. **Prepare the garage.**
    - Restore to `garage-clean`.
    - Download the repo tarball through the GitHub connector and `git init` it, so diffs work.
-   - Detect the test command (see below) and run it once to record the **baseline**.
+   - Detect the test command (see below) and install dependencies (`npm ci`, or `pip install -r requirements.txt`). Dependency and cache folders such as `node_modules/` are excluded from git, so they never show up as changes.
+   - Commit and tag the result as `uncle-base`; changes are always measured against this tag, even if Claude makes commits of its own.
+   - Run the tests once to record the **baseline**.
    - Take checkpoint **`t0-<job>`**.
 4. **Recall.** Search Pinecone for memories about this repo that are similar to the issue. Post the acknowledgement comment.
 5. **Timelines.** For each timeline `n` from 1 to `MAX_TIMELINES` (default 3):
    1. Write `/work/prompt.txt`. It contains the issue, the test command, the repo's "family lore", the persona, and a summary of every failed timeline so far, with the instruction to try a *different* approach.
-   2. Run Claude Code headless (`claude -p … --output-format json`) inside the garage, with a time limit (default 5 minutes).
+   2. Start Claude Code headless (`claude -p … --output-format json`) inside the garage as a detached process, with a time limit (default 5 minutes). It writes its exit code to a file when it finishes; the brain polls for that file every few seconds, so no HTTP request has to stay open for minutes. A run that overstays is killed.
    3. Record the diff and the list of changed files.
    4. **Judge the attempt.** It fails, with a recorded reason, if:
       - Claude ran out of time;
       - Claude exited non-zero;
       - Claude's output did not end with the required `{"approach", "quote"}` JSON;
-      - it edited a test file ("tried to change the rules").
+      - it edited a test file ("tried to change the rules");
+      - it changed nothing.
    5. **Hidden tests.** Otherwise, copy the hidden acceptance tests into the garage and run the full suite. A failing suite fails the timeline.
    6. **Remember.** Write the timeline to Pinecone, pass or fail.
    7. **Pass:** build the PR from the changed files, excluding the hidden tests, and stop.
@@ -198,7 +201,8 @@ If Pinecone is unreachable, Uncle carries on without memory instead of failing t
 
 The webhook is public and issue text flows into an agent that runs code, so the trust boundaries are kept narrow:
 
-- **Who can trigger:** only allowlisted GitHub users (`OWNER_ALLOWLIST`), only on allowlisted repos (`REPO_ALLOWLIST`). Every request needs a valid HMAC signature. The bot's own comments are always ignored, so it can't trigger itself.
+- **Who can trigger:** only allowlisted GitHub users (`OWNER_ALLOWLIST`), only on allowlisted repos (`REPO_ALLOWLIST`), and only on issues that an allowlisted user opened, because the issue text becomes Claude's instructions. Every request needs a valid HMAC signature. The bot's own comments are always ignored, so it can't trigger itself.
+- **Connector scoping:** the garage runs Claude with permissions skipped, so a prompt-injected Claude could use any connector the garage is allowed to reach. Only the **GitHub** connector is shared with the garage (it downloads the repo through it). The **Sprites API (Custom API)** and **Pinecone** connectors are restricted to `uncle-brain` alone. Residual risk: a hijacked attempt could still use the GitHub connector as the bot, for example to comment, so give the bot write access only to the repos Uncle works on.
 - **Where code runs:** Claude Code runs with permissions skipped, but only in the garage, an isolated microVM that is restored to a clean checkpoint at the start of every job and after every failed timeline.
 - **Secrets on the boxes:**
   - brain: `WEBHOOK_SECRET` only (it can't access any service);
@@ -301,11 +305,16 @@ sprite create uncle-garage --skip-console
 - Create the repo you want fixed and add the bot as a collaborator with write access.
 - For the demo, push `demo/` as `uncle-demo-pantry` and open the two issues in `demo/ISSUES.md`.
 
-**3. Connectors.** In the Fly dashboard go to **Sprites → Connectors**. Add each of these, with the access policy **name prefix `uncle-`**, and note each connection id:
-- **GitHub**: sign in as the **bot** account when authorizing.
-- **Pinecone**: use your Pinecone API key.
-- **Custom API**: base URL `https://api.sprites.dev`, header `Authorization: Bearer <a Sprites token>`.
-- *(optional)* **Ollama Cloud**.
+**3. Connectors.** In the Fly dashboard go to **Sprites → Connectors**. Add each of these with the access policy shown, and note each connection id:
+
+| Connector | Policy (name prefix) | Notes |
+|---|---|---|
+| **GitHub** | `uncle-` (brain and garage) | Sign in as the **bot** account when authorizing |
+| **Pinecone** | `uncle-brain` | Your Pinecone API key |
+| **Custom API** (Sprites API) | `uncle-brain` | Base URL `https://api.sprites.dev`, header `Authorization: Bearer <a Sprites token>` |
+| *(optional)* **Ollama Cloud** | `uncle-brain` | |
+
+Keep the Sprites API and Pinecone connectors away from the garage: it runs Claude with permissions skipped (see [Security model](#security-model)).
 
 **4. Pinecone index.** Create `uncle-memories` with integrated embedding model `llama-text-embed-v2` and field map `text`.
 
